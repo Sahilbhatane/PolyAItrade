@@ -1,0 +1,42 @@
+name: rule_based_v1
+version: "1.0.0"
+
+indicators:
+  rsi_overbought: 70.0
+  rsi_oversold: 30.0
+  rsi_period: 14
+
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+
+  sma_fast: 10
+  sma_slow: 30
+
+  ema_fast: 9
+  ema_slow: 21
+
+  vwap_enabled: true
+  bollinger_period: 20
+  bollinger_std: 2.0
+
+  atr_period: 14
+  atr_stop_multiplier: 2.0
+
+risk:
+  max_capital_per_trade: 0.02
+  stop_loss_pct: 0.03
+  trailing_stop_pct: 0.02
+  daily_loss_limit: 0.05
+  max_consecutive_losses: 3
+
+overtrading:
+  max_trades_per_day: 5
+  cooldown_bars: 3
+  min_confidence: 0.5
+
+weights:
+  rsi: 0.25
+  macd: 0.25
+  ma_crossover: 0.25
+  vwap: 0.25
