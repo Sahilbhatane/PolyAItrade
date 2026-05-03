@@ -1,0 +1,47 @@
+---
+description: genral trading rules for agentic bots
+alwaysApply: true
+---
+
+# TRADING RULES
+
+1. Capital Risk:
+
+   * Max 1–2% per trade
+
+2. Daily Risk:
+
+   * Stop trading if daily loss > 3–5%
+
+3. Consecutive Loss Rule:
+
+   * Stop after 3 losing trades
+
+4. Trade Frequency:
+
+   * Limit trades per day (avoid overtrading)
+
+5. Confidence Threshold:
+
+   * Only execute trades if confidence > threshold
+
+6. Market Hours:
+
+   * Trade only between 9:15 AM – 3:30 PM IST
+
+7. No Trade Conditions:
+
+   * high volatility spikes
+   * major news events (optional future feature)
+
+8. Profit Protection:
+
+   * trailing stop loss mandatory
+
+9. Slippage Simulation:
+
+   * Always include execution delay impact
+
+10. No YOLO Rule:
+
+* No all-in trades EVER

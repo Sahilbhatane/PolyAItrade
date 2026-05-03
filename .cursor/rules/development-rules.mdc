@@ -1,0 +1,53 @@
+---
+description: development rules along with superpower use
+alwaysApply: true
+---
+
+# DEVELOPMENT RULES
+
+1. Always build in phases:
+
+   * Data → Backtesting → Strategy → ML → Agents
+
+2. Never mix responsibilities:
+
+   * Data != Strategy != Execution
+
+3. Every module must:
+
+   * have tests
+   * be independently runnable
+
+4. Logging is mandatory:
+
+   * No silent failures
+
+5. Use Cursor planning mode:
+
+   * Break features into small tasks
+   * Validate each phase before moving forward
+
+6. Superpower Setup Usage:
+
+   * Use parallel agents for:
+
+     * feature development
+     * testing
+     * refactoring
+
+7. Code Review Rule:
+
+   * All generated code must be validated
+   * No blind acceptance
+
+8. Version Control:
+
+   * Each phase must be a separate commit
+
+9. Config-Driven System:
+
+   * No hardcoded parameters
+
+10. Reproducibility:
+
+* Experiments must be repeatable

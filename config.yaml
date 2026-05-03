@@ -1,0 +1,34 @@
+app_name: PolyVITrade
+environment: development
+
+trading:
+  max_risk_per_trade: 0.02
+  max_daily_loss: 0.05
+  max_consecutive_losses: 3
+  confidence_threshold: 0.6
+  market_open: "09:15"
+  market_close: "15:30"
+
+database:
+  url: "sqlite:///ai_trader.db"
+  echo: false
+  pool_size: 5
+
+logging:
+  level: INFO
+  format: json
+  output_dir: ai_trader/logs
+
+backtest:
+  default_capital: 100000.0
+  brokerage_rate: 0.0003
+  stt_rate: 0.00025
+  gst_rate: 0.18
+  slippage_rate: 0.0001
+  max_position_pct: 0.02
+
+broker:
+  name: paper
+  api_key: ""
+  api_secret: ""
+  base_url: ""

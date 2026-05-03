@@ -1,0 +1,42 @@
+---
+description: AI trading system
+alwaysApply: true
+---
+
+# AI TRADER SYSTEM RULES
+
+1. The system must NEVER execute trades without passing through:
+   StrategyAgent → RiskAgent → ExecutionAgent
+
+2. No single component (ML model, LLM, or agent) is allowed to independently:
+
+   * generate AND execute a trade
+
+3. All decisions must be explainable and logged:
+
+   * input signals
+   * reasoning
+   * confidence score
+
+4. Every trade must include:
+
+   * stop loss
+   * position size
+   * expected risk/reward
+
+5. The system must always account for:
+
+   * brokerage
+   * taxes (STT, GST)
+   * slippage
+
+6. If data is missing, stale, or inconsistent:
+   → system must NOT trade
+
+7. Determinism rule:
+
+   * Backtesting results must be reproducible
+
+8. Fail-safe rule:
+
+   * Any unexpected error → NO TRADE

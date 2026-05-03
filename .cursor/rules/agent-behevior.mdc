@@ -1,0 +1,46 @@
+---
+description: AI agentic system for trading bots and agents
+alwaysApply: true
+---
+
+# AGENT RULES
+
+1. MarketDataAgent:
+
+   * Must validate data before passing forward
+   * Must timestamp all data
+
+2. SignalAgent:
+
+   * Outputs probabilities, NOT decisions
+   * Must not assume future data
+
+3. StrategyAgent:
+
+   * Combines signals only
+   * Must produce:
+     decision + confidence
+
+4. RiskAgent (highest authority):
+
+   * Can override ANY trade
+   * Must enforce:
+
+     * capital limits
+     * stop loss
+     * drawdown constraints
+
+5. ExecutionAgent:
+
+   * Executes ONLY approved trades
+   * Must verify order success
+
+6. ReflectionAgent:
+
+   * Cannot directly modify strategy
+   * Must propose bounded updates only
+
+7. No agent is allowed to:
+
+   * override logging
+   * bypass validation
