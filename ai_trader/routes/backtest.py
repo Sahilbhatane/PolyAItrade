@@ -87,7 +87,7 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
         store.save(market_data)
 
     # Build strategy
-    strategy = _build_strategy(request.strategy_type, request.strategy_params)
+    strategy = _build_strategy(request.strategy_type, request.strategy_params, request.initial_capital)
 
     # Build fee model
     fee_model = FeeModel(
@@ -132,13 +132,23 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
     )
 
 
-def _build_strategy(strategy_type: str, params: dict[str, Any]) -> BaseStrategy:
+def _build_strategy(strategy_type: str, params: dict[str, Any], initial_capital: float = 100_000.0) -> BaseStrategy:
     """Factory for built-in strategies."""
     if strategy_type == "sma_crossover":
         return SMACrossoverStrategy(
             fast_period=params.get("fast_period", 10),
             slow_period=params.get("slow_period", 30),
         )
+    if strategy_type == "rule_based":
+        from ai_trader.strategies.config_loader import StrategyConfig, load_strategy_config
+        from ai_trader.strategies.rule_engine import RuleBasedStrategy
+
+        config_path = params.get("config_path")
+        if config_path:
+            config = load_strategy_config(config_path)
+        else:
+            config = StrategyConfig(**{k: v for k, v in params.items() if k != "config_path"})
+        return RuleBasedStrategy(config=config, initial_capital=initial_capital)
     raise HTTPException(status_code=400, detail=f"Unknown strategy: {strategy_type}")
 
 
