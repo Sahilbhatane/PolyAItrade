@@ -85,6 +85,7 @@ class Simulator(BacktestEngine):
         if df.empty:
             raise ValueError("No data available for the specified date range")
 
+        self._validate_data(df)
         strategy.initialize(df)
 
         cash = self.initial_capital
@@ -102,6 +103,7 @@ class Simulator(BacktestEngine):
                 if exit_price is not None:
                     trade, cash = self._close_position(position, exit_price, i, bar, cash, exit_reason)
                     trades.append(trade)
+                    self._notify_strategy(strategy, trade.pnl)
                     position = None
 
             # Evaluate strategy signal
@@ -114,12 +116,13 @@ class Simulator(BacktestEngine):
             elif signal.signal == Signal.SELL and position is not None:
                 trade, cash = self._close_position(position, current_price, i, bar, cash, "signal_exit")
                 trades.append(trade)
+                self._notify_strategy(strategy, trade.pnl)
                 position = None
 
-            # Mark-to-market equity
+            # Mark-to-market equity (net of exit fees to avoid fake profitability)
             mtm = cash
             if position is not None:
-                mtm += current_price * position.quantity
+                mtm += self.fee_model.calculate_sell_proceeds(current_price, position.quantity)
             equity_curve.append(mtm)
 
         # Force-close any open position at end
@@ -180,6 +183,25 @@ class Simulator(BacktestEngine):
         if end:
             df = df[df.index <= pd.Timestamp(end, tz="UTC")]
         return df
+
+    @staticmethod
+    def _validate_data(df: pd.DataFrame) -> None:
+        """Validate data integrity before backtesting. Refuse to trade on bad data."""
+        required_cols = {"open", "high", "low", "close", "volume"}
+        missing = required_cols - set(df.columns)
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+
+        null_counts = df[list(required_cols)].isnull().sum()
+        if null_counts.any():
+            bad_cols = null_counts[null_counts > 0].to_dict()
+            raise ValueError(f"Data contains NaN values — cannot trade on inconsistent data: {bad_cols}")
+
+        if not df.index.is_monotonic_increasing:
+            raise ValueError("Data index is not sorted chronologically")
+
+        if (df[["open", "high", "low", "close"]] <= 0).any().any():
+            raise ValueError("Data contains non-positive prices")
 
     def _check_exits(self, position: Position, bar: pd.Series) -> tuple[float | None, str]:
         """Check if stop loss or take profit is triggered on this bar."""
@@ -260,6 +282,12 @@ class Simulator(BacktestEngine):
             duration_bars=bar_index - position.entry_bar,
         )
         return trade, cash
+
+    @staticmethod
+    def _notify_strategy(strategy: BaseStrategy, pnl: float) -> None:
+        """Notify strategy of trade completion if it supports the callback."""
+        if hasattr(strategy, "on_trade_closed"):
+            strategy.on_trade_closed(pnl)
 
     @staticmethod
     def _trade_to_dict(trade: TradeRecord) -> dict[str, Any]:
