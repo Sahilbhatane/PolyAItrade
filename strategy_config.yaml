@@ -40,3 +40,10 @@ weights:
   macd: 0.25
   ma_crossover: 0.25
   vwap: 0.25
+  ml_prediction: 0.0
+
+ml:
+  enabled: false
+  model_path: ""
+  sequence_length: 30
+  confidence_boost: 0.1

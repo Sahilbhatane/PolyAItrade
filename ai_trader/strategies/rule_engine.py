@@ -20,8 +20,10 @@ logger = get_logger(__name__)
 class RuleBasedStrategy(BaseStrategy):
     """Configurable rule-based strategy using technical indicators.
 
-    Combines RSI, MACD, moving average crossover, and VWAP signals
+    Combines RSI, MACD, moving average crossover, VWAP, and optional ML signals
     with weighted voting. Enforces risk controls and overtrading limits.
+
+    The ML model ASSISTS the strategy — it never decides or executes trades alone.
     """
 
     def __init__(self, config: StrategyConfig, initial_capital: float = 100_000.0):
@@ -39,6 +41,11 @@ class RuleBasedStrategy(BaseStrategy):
         self._sma_slow: pd.Series | None = None
         self._vwap: pd.Series | None = None
         self._atr: pd.Series | None = None
+
+        # ML model integration (optional, loaded if configured)
+        self._ml_model = None
+        self._ml_pipeline = None
+        self._ml_features_df: pd.DataFrame | None = None
 
     @property
     def name(self) -> str:
@@ -60,8 +67,34 @@ class RuleBasedStrategy(BaseStrategy):
         if ind.vwap_enabled:
             self._vwap = Indicators.vwap(data)
 
+        self._init_ml_model(data)
+
         self.risk_controller.reset()
         self._capital = self._initial_capital
+
+    def _init_ml_model(self, data: pd.DataFrame) -> None:
+        """Load ML model if configured. Failures are non-fatal — strategy degrades gracefully."""
+        if not self.config.ml.enabled or not self.config.ml.model_path:
+            return
+
+        try:
+            from ai_trader.models.lstm import LSTMPredictor
+            from ai_trader.models.features import FeaturePipeline, FeatureConfig
+
+            model = LSTMPredictor()
+            model.load(self.config.ml.model_path)
+            self._ml_model = model
+
+            f_config = FeatureConfig(sequence_length=self.config.ml.sequence_length)
+            self._ml_pipeline = FeaturePipeline(f_config)
+            self._ml_pipeline._means = model._feature_means
+            self._ml_pipeline._stds = model._feature_stds
+
+            self._ml_features_df = self._ml_pipeline.build_features(data)
+            logger.info("ml_model_loaded", model_id=model.model_id)
+        except Exception as e:
+            logger.warning("ml_model_load_failed", error=str(e))
+            self._ml_model = None
 
     def evaluate(self, data: pd.DataFrame, current_index: int) -> TradeSignal:
         """Evaluate all indicators and combine into a weighted signal."""
@@ -82,6 +115,7 @@ class RuleBasedStrategy(BaseStrategy):
         macd_signal = self._evaluate_macd(current_index)
         ma_signal = self._evaluate_ma_crossover(current_index)
         vwap_signal = self._evaluate_vwap(data, current_index)
+        ml_signal = self._evaluate_ml(data, current_index)
 
         # Weighted combination
         weights = self.config.weights
@@ -90,9 +124,13 @@ class RuleBasedStrategy(BaseStrategy):
             + macd_signal * weights.macd
             + ma_signal * weights.ma_crossover
             + vwap_signal * weights.vwap
+            + ml_signal * weights.ml_prediction
         )
 
-        total_weight = weights.rsi + weights.macd + weights.ma_crossover + weights.vwap
+        total_weight = (
+            weights.rsi + weights.macd + weights.ma_crossover
+            + weights.vwap + weights.ml_prediction
+        )
         if total_weight > 0:
             composite /= total_weight
 
@@ -224,3 +262,35 @@ class RuleBasedStrategy(BaseStrategy):
         # Price below VWAP is bullish (potential mean reversion)
         # Price above VWAP is bearish
         return float(np.clip(-deviation * 10, -1.0, 1.0))
+
+    def _evaluate_ml(self, data: pd.DataFrame, idx: int) -> float:
+        """ML model signal: probability of price increase mapped to [-1, 1].
+
+        The model only provides a probability — it does not make trade decisions.
+        Returns 0.0 if ML is disabled or insufficient data.
+        """
+        if self._ml_model is None or self._ml_pipeline is None:
+            return 0.0
+
+        seq_len = self.config.ml.sequence_length
+        if idx < seq_len:
+            return 0.0
+
+        try:
+            feature_slice = self._ml_features_df.iloc[idx - seq_len:idx]
+            if feature_slice.isnull().any().any() or len(feature_slice) < seq_len:
+                return 0.0
+
+            values = feature_slice.values
+            normalized = (values - self._ml_pipeline._means) / self._ml_pipeline._stds
+
+            import torch
+            self._ml_model.network.eval()
+            with torch.no_grad():
+                x = torch.FloatTensor(normalized).unsqueeze(0)
+                prob = self._ml_model.network(x).item()
+
+            # Map [0,1] probability to [-1,1] signal
+            return (prob - 0.5) * 2.0
+        except Exception:
+            return 0.0

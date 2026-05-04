@@ -59,6 +59,16 @@ class SignalWeights(BaseModel):
     macd: float = Field(default=0.25, ge=0.0, le=1.0)
     ma_crossover: float = Field(default=0.25, ge=0.0, le=1.0)
     vwap: float = Field(default=0.25, ge=0.0, le=1.0)
+    ml_prediction: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class MLConfig(BaseModel):
+    """Configuration for ML model integration."""
+
+    enabled: bool = Field(default=False)
+    model_path: str = Field(default="")
+    sequence_length: int = Field(default=30, ge=5)
+    confidence_boost: float = Field(default=0.1, ge=0.0, le=0.5)
 
 
 class StrategyConfig(BaseModel):
@@ -70,6 +80,7 @@ class StrategyConfig(BaseModel):
     risk: RiskParams = Field(default_factory=RiskParams)
     overtrading: OvertradingControls = Field(default_factory=OvertradingControls)
     weights: SignalWeights = Field(default_factory=SignalWeights)
+    ml: MLConfig = Field(default_factory=MLConfig)
 
 
 def load_strategy_config(path: str | Path | None = None) -> StrategyConfig:
