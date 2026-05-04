@@ -1,0 +1,44 @@
+# ML Model Configuration
+# All parameters are configurable — no hardcoded values.
+
+model:
+  type: lstm
+  input_size: 15
+  hidden_size: 64
+  num_layers: 2
+  dropout: 0.2
+  learning_rate: 0.001
+  seed: 42
+
+features:
+  sequence_length: 30
+  forecast_horizon: 1
+  price_change_threshold: 0.0
+  use_returns: true
+  use_rsi: true
+  use_macd: true
+  use_bollinger: true
+  use_atr: true
+  use_volume_ratio: true
+  use_ma_ratios: true
+  rsi_period: 14
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  bollinger_period: 20
+  atr_period: 14
+  sma_fast: 10
+  sma_slow: 30
+
+training:
+  epochs: 50
+  batch_size: 32
+  train_ratio: 0.7
+  validation_ratio: 0.15
+  n_folds: 3
+  min_train_size: 200
+
+# Walk-forward retraining schedule
+retraining:
+  retrain_every_n_bars: 60
+  min_new_data_points: 30

@@ -28,10 +28,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    from ai_trader.routes import backtest, data, health
+    from ai_trader.routes import backtest, data, health, ml
 
     app.include_router(health.router)
     app.include_router(data.router)
     app.include_router(backtest.router)
+    app.include_router(ml.router)
 
     return app
