@@ -45,7 +45,25 @@ class BrokerConfig(BaseModel):
     name: str = Field(default="paper")
     api_key: str = Field(default="")
     api_secret: str = Field(default="")
+    client_id: str = Field(default="")
+    password: str = Field(default="")
+    totp_secret: str = Field(default="")
     base_url: str = Field(default="")
+    max_retries: int = Field(default=3, ge=1)
+    retry_delay_s: float = Field(default=1.0, ge=0.1)
+    product_type: str = Field(default="INTRADAY")
+    exchange: str = Field(default="NSE")
+
+
+class ApprovalConfig(BaseModel):
+    enabled: bool = Field(default=True)
+    timeout_s: float = Field(default=300.0, ge=10.0)
+    auto_approve_paper: bool = Field(default=True)
+
+
+class KillSwitchConfig(BaseModel):
+    daily_loss_limit: float | None = Field(default=0.05, ge=0.0, le=1.0)
+    max_api_failures: int = Field(default=5, ge=1)
 
 
 class AppConfig(BaseModel):
@@ -56,6 +74,8 @@ class AppConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     broker: BrokerConfig = Field(default_factory=BrokerConfig)
+    approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
+    kill_switch: KillSwitchConfig = Field(default_factory=KillSwitchConfig)
 
 
 class ConfigLoader:

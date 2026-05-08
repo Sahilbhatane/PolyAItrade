@@ -11,6 +11,11 @@ yfinance>=0.2.40
 torch>=2.2.0
 scikit-learn>=1.5.0
 
+# Broker Integration
+smartapi-python>=1.4.0
+pyotp>=2.9.0
+websocket-client>=1.7.0
+
 # Logging
 structlog>=24.4.0
 

@@ -28,7 +28,23 @@ backtest:
   max_position_pct: 0.02
 
 broker:
-  name: paper
+  name: paper  # "paper" or "angelone"
   api_key: ""
   api_secret: ""
+  client_id: ""
+  password: ""
+  totp_secret: ""
   base_url: ""
+  max_retries: 3
+  retry_delay_s: 1.0
+  product_type: INTRADAY
+  exchange: NSE
+
+approval:
+  enabled: true
+  timeout_s: 300.0
+  auto_approve_paper: true  # bypasses approval in paper mode only
+
+kill_switch:
+  daily_loss_limit: 0.05
+  max_api_failures: 5
