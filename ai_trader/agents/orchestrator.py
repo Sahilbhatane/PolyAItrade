@@ -23,6 +23,7 @@ from ai_trader.agents.signal_agent import SignalAgent
 from ai_trader.agents.strategy_agent import StrategyAgent
 from ai_trader.agents.risk_agent import RiskAgent
 from ai_trader.agents.execution_agent import ExecutionAgent
+from ai_trader.agents.reflection_agent import ReflectionAgent
 from ai_trader.broker.base import BaseBroker
 from ai_trader.logs import get_logger
 
@@ -92,6 +93,12 @@ class Orchestrator:
             event_bus=self._bus,
             state=self._state,
             broker=broker,
+            config=self._config.get("execution", {}),
+        )
+        self._reflection_agent = ReflectionAgent(
+            event_bus=self._bus,
+            state=self._state,
+            config=self._config.get("reflection", {}),
         )
 
         self._pipeline_agents: list[tuple[str, BaseAgent]] = [
@@ -113,6 +120,10 @@ class Orchestrator:
     @property
     def risk_agent(self) -> RiskAgent:
         return self._risk_agent
+
+    @property
+    def reflection_agent(self) -> ReflectionAgent:
+        return self._reflection_agent
 
     async def run_pipeline(
         self,
@@ -160,6 +171,16 @@ class Orchestrator:
                 ))
                 logger.error("pipeline_failed", stage=agent_name, error=str(e))
                 return result
+
+        # Run reflection if a trade was executed
+        order_result = self._state.read(StateKeys.ORDER_RESULT)
+        if order_result and order_result.get("status") == "success":
+            try:
+                reflection_ctx = self._build_reflection_context()
+                ref_result = await self._reflection_agent.start(reflection_ctx)
+                result.add_step("Reflection", ref_result)
+            except Exception as e:
+                logger.warning("reflection_failed", error=str(e))
 
         result.success = True
         result.final_state = self._state.snapshot()
@@ -226,9 +247,43 @@ class Orchestrator:
 
         return results
 
+    async def reflect_on_trade(self, trade_data: dict[str, Any], signals_at_entry: dict[str, float] = None, actual_price_move: float = 0.0) -> dict[str, Any]:
+        """Manually trigger reflection on a closed trade."""
+        ctx = {
+            "trade": trade_data,
+            "signals_at_entry": signals_at_entry or {},
+            "actual_price_move": actual_price_move,
+        }
+        return await self._reflection_agent.start(ctx)
+
+    def _build_reflection_context(self) -> dict[str, Any]:
+        """Build context for reflection from current pipeline state."""
+        decision = self._state.read(StateKeys.TRADE_DECISION) or {}
+        order_result = self._state.read(StateKeys.ORDER_RESULT) or {}
+        verdict = self._state.read(StateKeys.RISK_VERDICT) or {}
+
+        trade_data = {
+            "trade_id": order_result.get("order_id", ""),
+            "symbol": self._state.read(StateKeys.MARKET_METADATA) or {},
+            "side": order_result.get("side", "BUY"),
+            "entry_price": order_result.get("fill_price", order_result.get("price", 0.0)),
+            "quantity": order_result.get("quantity", 0),
+            "stop_loss": verdict.get("stop_loss"),
+            "entry_reason": decision.get("reasoning", ""),
+            "confidence": decision.get("confidence", 0.0),
+            "slippage_cost": order_result.get("slippage_cost", 0.0),
+        }
+
+        return {
+            "trade": trade_data,
+            "signals_at_entry": decision.get("signals", {}),
+            "actual_price_move": 0.0,
+        }
+
     def reset(self) -> None:
         """Reset all state for a fresh run."""
         self._risk_agent.reset()
+        self._reflection_agent.reset()
         self._bus.clear()
 
     @staticmethod

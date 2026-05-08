@@ -3,6 +3,7 @@ from ai_trader.agents.event_bus import Event, EventBus, EventType
 from ai_trader.agents.execution_agent import ExecutionAgent
 from ai_trader.agents.market_data_agent import MarketDataAgent
 from ai_trader.agents.orchestrator import Orchestrator, PipelineResult
+from ai_trader.agents.reflection_agent import ReflectionAgent
 from ai_trader.agents.risk_agent import RiskAgent
 from ai_trader.agents.signal_agent import SignalAgent
 from ai_trader.agents.state import StateKeys, StateManager
@@ -19,6 +20,7 @@ __all__ = [
     "MarketDataAgent",
     "Orchestrator",
     "PipelineResult",
+    "ReflectionAgent",
     "RiskAgent",
     "SignalAgent",
     "StateKeys",
