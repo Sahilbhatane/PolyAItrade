@@ -39,6 +39,12 @@ class EventType(str, Enum):
     ORDER_FILLED = "execution.filled"
     ORDER_FAILED = "execution.failed"
 
+    TRADE_OPENED = "trade.opened"
+    TRADE_CLOSED = "trade.closed"
+
+    REFLECTION_COMPLETE = "reflection.complete"
+    ADJUSTMENT_PROPOSED = "reflection.adjustment"
+
     PIPELINE_START = "pipeline.start"
     PIPELINE_COMPLETE = "pipeline.complete"
     PIPELINE_ERROR = "pipeline.error"

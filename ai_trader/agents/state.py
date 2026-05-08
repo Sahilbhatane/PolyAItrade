@@ -89,3 +89,6 @@ class StateKeys:
     ORDER_RESULT = "order_result"
     PORTFOLIO = "portfolio"
     PIPELINE_STATUS = "pipeline_status"
+    TRADE_LOG = "trade_log"
+    REFLECTION_REPORT = "reflection_report"
+    WEIGHT_ADJUSTMENTS = "weight_adjustments"
