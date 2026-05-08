@@ -50,6 +50,17 @@ class StateManager:
                 version=version,
             )
 
+    def write_sync(self, key: str, value: Any, writer: str = "sync") -> None:
+        """Synchronous write — for use in tests or non-async contexts."""
+        existing = self._store.get(key)
+        version = existing.version + 1 if existing else 1
+        self._store[key] = StateEntry(
+            value=value,
+            writer=writer,
+            updated_at=datetime.now(timezone.utc),
+            version=version,
+        )
+
     def read(self, key: str) -> Any | None:
         """Read the current value of a state slot. Returns None if not set."""
         entry = self._store.get(key)

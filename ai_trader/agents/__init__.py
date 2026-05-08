@@ -1,6 +1,7 @@
 from ai_trader.agents.base import BaseAgent, AgentMessage, AgentStatus
 from ai_trader.agents.event_bus import Event, EventBus, EventType
 from ai_trader.agents.execution_agent import ExecutionAgent
+from ai_trader.agents.live_execution_agent import LiveExecutionAgent
 from ai_trader.agents.market_data_agent import MarketDataAgent
 from ai_trader.agents.orchestrator import Orchestrator, PipelineResult
 from ai_trader.agents.reflection_agent import ReflectionAgent
@@ -17,6 +18,7 @@ __all__ = [
     "EventBus",
     "EventType",
     "ExecutionAgent",
+    "LiveExecutionAgent",
     "MarketDataAgent",
     "Orchestrator",
     "PipelineResult",
