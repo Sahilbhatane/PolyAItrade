@@ -31,6 +31,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     kill_switch = KillSwitch(auto_triggers={
         "daily_loss_limit": config.kill_switch.daily_loss_limit,
         "max_api_failures": config.kill_switch.max_api_failures,
+        "volatility_spike_zscore": config.kill_switch.volatility_spike_zscore,
+        "runaway_loss_pct": config.kill_switch.runaway_loss_pct,
     })
 
     broker = _create_broker(config)
@@ -72,12 +74,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    from ai_trader.routes import backtest, data, health, ml, trading
+    from ai_trader.routes import backtest, data, health, ml, rl, trading
 
     app.include_router(health.router)
     app.include_router(data.router)
     app.include_router(backtest.router)
     app.include_router(ml.router)
+    app.include_router(rl.router)
     app.include_router(trading.router)
 
     return app

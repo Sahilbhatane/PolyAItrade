@@ -2,14 +2,18 @@
 name = "polyvitrade"
 version = "0.1.0"
 description = "Agentic AI Trading System"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "network: tests that require external network access",
+]
+addopts = ["-m", "not network"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]

@@ -149,6 +149,9 @@ class ReflectionAgent(BaseAgent):
         }
         self._current_confidence_threshold: float = 0.5
 
+        # Detect oscillating reflection feedback
+        self._reflection_sign_history: list[int] = []
+
     @property
     def trade_log(self) -> list[TradeRecord]:
         return self._trade_log
@@ -187,7 +190,14 @@ class ReflectionAgent(BaseAgent):
             report = self._generate_report()
             await self._state.write(StateKeys.REFLECTION_REPORT, report, writer=self.agent_id)
 
-            if report.weight_adjustments:
+            unstable = self._detect_feedback_instability(report.confidence_adjustment)
+            if unstable:
+                self.log(
+                    "reflection_instability_freeze",
+                    level="warning",
+                    confidence_adjustment=report.confidence_adjustment,
+                )
+            elif report.weight_adjustments:
                 adjustments = {
                     "weights": {a.indicator: a.proposed_weight for a in report.weight_adjustments},
                     "confidence_threshold": self._current_confidence_threshold + report.confidence_adjustment,
@@ -444,6 +454,20 @@ class ReflectionAgent(BaseAgent):
 
         return adj
 
+    def _detect_feedback_instability(self, confidence_adjustment: float) -> bool:
+        """Freeze bounded updates if confidence adjustments oscillate rapidly."""
+        if abs(confidence_adjustment) < 1e-12:
+            sign = 0
+        else:
+            sign = 1 if confidence_adjustment > 0 else -1
+        self._reflection_sign_history.append(sign)
+        self._reflection_sign_history = self._reflection_sign_history[-12:]
+        nz = [s for s in self._reflection_sign_history if s != 0]
+        if len(nz) < 5:
+            return False
+        flips = sum(1 for a, b in zip(nz, nz[1:]) if a != b)
+        return flips >= 4
+
     @staticmethod
     def _compute_trend(trades: list[TradeRecord]) -> str:
         """Compare first half vs second half to detect performance trend."""
@@ -489,6 +513,7 @@ class ReflectionAgent(BaseAgent):
         self._evaluations.clear()
         self._current_weights = {"rsi": 0.25, "macd": 0.25, "ma_crossover": 0.25, "vwap": 0.25}
         self._current_confidence_threshold = 0.5
+        self._reflection_sign_history.clear()
 
     def get_performance_summary(self) -> dict[str, Any]:
         """Get current performance stats for external monitoring."""

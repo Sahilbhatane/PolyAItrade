@@ -29,6 +29,7 @@ risk:
   trailing_stop_pct: 0.02
   daily_loss_limit: 0.05
   max_consecutive_losses: 3
+  atr_stop_multiplier: 2.0
 
 overtrading:
   max_trades_per_day: 5

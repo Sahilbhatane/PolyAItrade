@@ -103,3 +103,7 @@ class StateKeys:
     TRADE_LOG = "trade_log"
     REFLECTION_REPORT = "reflection_report"
     WEIGHT_ADJUSTMENTS = "weight_adjustments"
+    REGIME = "regime"
+    STRATEGY_WEIGHTS = "strategy_weights"
+    CONSENSUS_AUDIT = "consensus_audit"
+    RL_WEIGHT_PROPOSAL = "rl_weight_proposal"

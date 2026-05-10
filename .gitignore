@@ -1,34 +1,108 @@
+# Byte-compiled / optimized / DLL
 __pycache__/
 *.py[cod]
 *$py.class
-*.egg-info/
-dist/
+*.so
+
+# C extensions
+*.pyd
+
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
 .eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
 *.egg
+MANIFEST
+pip-wheel-metadata/
 
 # Virtual environments
 .venv/
 venv/
 env/
+ENV/
 
-# IDE
-.vscode/
-.idea/
+# PyInstaller
+*.manifest
+*.spec
 
-# Database
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+nosetests.xml
+
+# Type checkers / linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pyenv
+.python-version
+
+# Environments & secrets (never commit)
+.env
+.env.*
+!.env.example
+
+# Local overrides
+config.local.yaml
+*.local.yaml
+
+# Databases & local stores
 *.db
+*.sqlite
+*.sqlite3
+ai_trader_parameter_history.db
+
+# Trained models / RL checkpoints (large binaries)
+models/rl/*.zip
 
 # Logs
 ai_trader/logs/*.log
+*.log
+logs/
 
-# Environment
-.env
-.env.*
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
+.DS_Store?
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Config overrides
-config.local.yaml
+# Cursor (optional local-only; uncomment if you do not commit .cursor/)
+# .cursor/
+
+# Windows / OneDrive
+~$*

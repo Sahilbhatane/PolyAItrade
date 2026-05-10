@@ -48,3 +48,34 @@ approval:
 kill_switch:
   daily_loss_limit: 0.05
   max_api_failures: 5
+  volatility_spike_zscore: 4.5
+  runaway_loss_pct: 0.12
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+integrations:
+  alpha_vantage_api_key: ""
+  polygon_api_key: ""
+  finnhub_api_key: ""
+  openai_api_key: ""
+  anthropic_api_key: ""
+  telegram_bot_token: ""
+  discord_webhook_url: ""
+
+regime:
+  window_bars: 20
+  sma_slope_period: 10
+  trend_slope_threshold: 0.0005
+  atr_percentile_volatile: 0.75
+  volume_z_low_liquidity: -1.25
+  sideways_atr_pct_max: 0.55
+
+agents:
+  consensus_enabled: true
+  consensus_min_weighted_confidence: 0.35
+
+risk_sizing:
+  volatile_multiplier: 0.5
+  low_liquidity_multiplier: 0.55

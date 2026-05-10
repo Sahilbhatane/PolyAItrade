@@ -1,13 +1,10 @@
 """Orchestrator — coordinates the agent pipeline sequentially.
 
-The pipeline flows strictly:
-  MarketDataAgent → SignalAgent → StrategyAgent → RiskAgent → ExecutionAgent
+Consensus mode (default):
+  MarketData → Signal → RegimeDetection → StrategySelection → Consensus → Risk → Execution
 
-No agent can bypass this chain. The orchestrator ensures:
-1. Correct ordering (data before signals, signals before decisions, etc.)
-2. Error propagation (failure at any stage stops the pipeline)
-3. Event publishing for pipeline lifecycle
-4. Logging of every step for auditability
+Legacy mode (`agents.consensus_enabled: false`):
+  MarketData → Signal → StrategyAgent → Risk → Execution
 """
 
 from __future__ import annotations
@@ -16,16 +13,20 @@ from datetime import datetime
 from typing import Any
 
 from ai_trader.agents.base import BaseAgent
+from ai_trader.agents.consensus_agent import ConsensusAgent
 from ai_trader.agents.event_bus import Event, EventBus, EventType
-from ai_trader.agents.state import StateKeys, StateManager
-from ai_trader.agents.market_data_agent import MarketDataAgent
-from ai_trader.agents.signal_agent import SignalAgent
-from ai_trader.agents.strategy_agent import StrategyAgent
-from ai_trader.agents.risk_agent import RiskAgent
 from ai_trader.agents.execution_agent import ExecutionAgent
+from ai_trader.agents.market_data_agent import MarketDataAgent
 from ai_trader.agents.reflection_agent import ReflectionAgent
+from ai_trader.agents.regime_detection_agent import RegimeDetectionAgent
+from ai_trader.agents.risk_agent import RiskAgent
+from ai_trader.agents.signal_agent import SignalAgent
+from ai_trader.agents.state import StateKeys, StateManager
+from ai_trader.agents.strategy_agent import StrategyAgent
+from ai_trader.agents.strategy_selection_agent import StrategySelectionAgent
 from ai_trader.broker.base import BaseBroker
 from ai_trader.logs import get_logger
+from ai_trader.strategies.config_loader import load_strategy_config
 
 logger = get_logger(__name__)
 
@@ -52,11 +53,7 @@ class PipelineResult:
 
 
 class Orchestrator:
-    """Schedules and runs the agent pipeline.
-
-    Agents are instantiated once and reused across pipeline runs.
-    Each run produces a PipelineResult with full audit trail.
-    """
+    """Schedules and runs the agent pipeline."""
 
     def __init__(
         self,
@@ -68,7 +65,17 @@ class Orchestrator:
         self._bus = EventBus()
         self._state = StateManager()
 
-        # Instantiate agents — loosely coupled via bus + state only
+        agents_cfg = self._config.get("agents", {})
+        self._consensus_enabled: bool = bool(agents_cfg.get("consensus_enabled", True))
+
+        strategy_path = self._config.get("strategy_config_path", "strategy_config.yaml")
+        self._strategy_yaml = load_strategy_config(strategy_path)
+
+        consensus_min = agents_cfg.get(
+            "consensus_min_weighted_confidence",
+            self._strategy_yaml.consensus_min_weighted_confidence,
+        )
+
         self._market_data_agent = MarketDataAgent(
             event_bus=self._bus,
             state=self._state,
@@ -84,10 +91,31 @@ class Orchestrator:
             state=self._state,
             config=self._config.get("strategy", {}),
         )
+        self._regime_agent = RegimeDetectionAgent(
+            event_bus=self._bus,
+            state=self._state,
+            regime_config=self._config.get("regime", {}),
+        )
+        self._strategy_selection_agent = StrategySelectionAgent(
+            event_bus=self._bus,
+            state=self._state,
+            strategy_config=self._strategy_yaml,
+        )
+        self._consensus_agent = ConsensusAgent(
+            event_bus=self._bus,
+            state=self._state,
+            strategy_config=self._strategy_yaml,
+            consensus_min_weighted_confidence=float(consensus_min),
+        )
+        risk_cfg = dict(self._config.get("risk", {}))
+        rs = self._config.get("risk_sizing") or {}
+        risk_cfg.setdefault("volatile_regime_multiplier", rs.get("volatile_multiplier", 0.5))
+        risk_cfg.setdefault("low_liquidity_regime_multiplier", rs.get("low_liquidity_multiplier", 0.55))
+
         self._risk_agent = RiskAgent(
             event_bus=self._bus,
             state=self._state,
-            config=self._config.get("risk", {}),
+            config=risk_cfg,
         )
         self._execution_agent = ExecutionAgent(
             event_bus=self._bus,
@@ -101,13 +129,24 @@ class Orchestrator:
             config=self._config.get("reflection", {}),
         )
 
-        self._pipeline_agents: list[tuple[str, BaseAgent]] = [
-            ("MarketData", self._market_data_agent),
-            ("Signal", self._signal_agent),
-            ("Strategy", self._strategy_agent),
-            ("Risk", self._risk_agent),
-            ("Execution", self._execution_agent),
-        ]
+        if self._consensus_enabled:
+            self._pipeline_agents: list[tuple[str, BaseAgent]] = [
+                ("MarketData", self._market_data_agent),
+                ("Signal", self._signal_agent),
+                ("Regime", self._regime_agent),
+                ("StrategySelection", self._strategy_selection_agent),
+                ("Consensus", self._consensus_agent),
+                ("Risk", self._risk_agent),
+                ("Execution", self._execution_agent),
+            ]
+        else:
+            self._pipeline_agents = [
+                ("MarketData", self._market_data_agent),
+                ("Signal", self._signal_agent),
+                ("Strategy", self._strategy_agent),
+                ("Risk", self._risk_agent),
+                ("Execution", self._execution_agent),
+            ]
 
     @property
     def event_bus(self) -> EventBus:
@@ -133,18 +172,6 @@ class Orchestrator:
         end_date: datetime | None = None,
         bar_index: int | None = None,
     ) -> PipelineResult:
-        """Execute the full agent pipeline once.
-
-        Args:
-            symbol: Ticker symbol to process.
-            timeframe: Data timeframe.
-            start_date: Historical data start.
-            end_date: Historical data end.
-            bar_index: Specific bar to evaluate (None = last).
-
-        Returns:
-            PipelineResult with step-by-step audit.
-        """
         result = PipelineResult()
 
         await self._bus.publish(Event(
@@ -172,7 +199,6 @@ class Orchestrator:
                 logger.error("pipeline_failed", stage=agent_name, error=str(e))
                 return result
 
-        # Run reflection if a trade was executed
         order_result = self._state.read(StateKeys.ORDER_RESULT)
         if order_result and order_result.get("status") == "success":
             try:
@@ -201,12 +227,6 @@ class Orchestrator:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> list[PipelineResult]:
-        """Run pipeline for each bar sequentially (backtest-style).
-
-        Fetches data once, then runs signal → strategy → risk → execution
-        for each bar. The MarketDataAgent runs only once at the start.
-        """
-        # Step 1: Fetch and validate data
         data_ctx = {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -214,8 +234,6 @@ class Orchestrator:
             "end_date": end_date,
         }
         await self._market_data_agent.start(data_ctx)
-
-        # Step 2: Compute signals on full dataset
         await self._signal_agent.start()
 
         signals = self._state.read(StateKeys.SIGNALS)
@@ -225,13 +243,20 @@ class Orchestrator:
         n_bars = len(signals.get("rsi", []))
         results = []
 
-        # Step 3: For each bar, run strategy → risk → execution
         for bar_idx in range(n_bars):
             bar_result = PipelineResult()
 
             try:
-                strat_result = await self._strategy_agent.start({"bar_index": bar_idx})
-                bar_result.add_step("Strategy", strat_result)
+                if self._consensus_enabled:
+                    r1 = await self._regime_agent.start({"bar_index": bar_idx})
+                    bar_result.add_step("Regime", r1)
+                    r2 = await self._strategy_selection_agent.start()
+                    bar_result.add_step("StrategySelection", r2)
+                    r3 = await self._consensus_agent.start({"bar_index": bar_idx})
+                    bar_result.add_step("Consensus", r3)
+                else:
+                    strat_result = await self._strategy_agent.start({"bar_index": bar_idx})
+                    bar_result.add_step("Strategy", strat_result)
 
                 risk_result = await self._risk_agent.start()
                 bar_result.add_step("Risk", risk_result)
@@ -247,8 +272,12 @@ class Orchestrator:
 
         return results
 
-    async def reflect_on_trade(self, trade_data: dict[str, Any], signals_at_entry: dict[str, float] = None, actual_price_move: float = 0.0) -> dict[str, Any]:
-        """Manually trigger reflection on a closed trade."""
+    async def reflect_on_trade(
+        self,
+        trade_data: dict[str, Any],
+        signals_at_entry: dict[str, float] | None = None,
+        actual_price_move: float = 0.0,
+    ) -> dict[str, Any]:
         ctx = {
             "trade": trade_data,
             "signals_at_entry": signals_at_entry or {},
@@ -257,7 +286,6 @@ class Orchestrator:
         return await self._reflection_agent.start(ctx)
 
     def _build_reflection_context(self) -> dict[str, Any]:
-        """Build context for reflection from current pipeline state."""
         decision = self._state.read(StateKeys.TRADE_DECISION) or {}
         order_result = self._state.read(StateKeys.ORDER_RESULT) or {}
         verdict = self._state.read(StateKeys.RISK_VERDICT) or {}
@@ -281,29 +309,41 @@ class Orchestrator:
         }
 
     def reset(self) -> None:
-        """Reset all state for a fresh run."""
         self._risk_agent.reset()
         self._reflection_agent.reset()
         self._bus.clear()
 
-    @staticmethod
     def _build_contexts(
+        self,
         symbol: str,
         timeframe: str,
         start_date: datetime | None,
         end_date: datetime | None,
         bar_index: int | None,
     ) -> dict[str, dict[str, Any]]:
-        """Build per-agent context dicts."""
+        md = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
+        bi_ctx = {"bar_index": bar_index} if bar_index is not None else {}
+
+        if self._consensus_enabled:
+            return {
+                "MarketData": md,
+                "Signal": {},
+                "Regime": bi_ctx,
+                "StrategySelection": {},
+                "Consensus": bi_ctx,
+                "Risk": {},
+                "Execution": {},
+            }
+
         return {
-            "MarketData": {
-                "symbol": symbol,
-                "timeframe": timeframe,
-                "start_date": start_date,
-                "end_date": end_date,
-            },
+            "MarketData": md,
             "Signal": {},
-            "Strategy": {"bar_index": bar_index} if bar_index is not None else {},
+            "Strategy": bi_ctx,
             "Risk": {},
             "Execution": {},
         }

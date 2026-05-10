@@ -42,3 +42,13 @@ training:
 retraining:
   retrain_every_n_bars: 60
   min_new_data_points: 30
+
+rl:
+  seed: 42
+  checkpoint_dir: models/rl
+  learning_rate: 0.0003
+  max_weight_delta: 0.2
+  max_confidence_delta: 0.05
+  obs_dim: 16
+  n_strategies: 6
+  walk_forward_folds: 3

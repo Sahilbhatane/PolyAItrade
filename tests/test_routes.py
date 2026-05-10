@@ -85,3 +85,11 @@ async def test_backtest_unknown_strategy(client):
         "strategy_type": "nonexistent",
     })
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_rl_status(client):
+    resp = await client.get("/rl/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "checkpoint_exists" in body

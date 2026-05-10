@@ -153,3 +153,29 @@ class KillSwitch:
         """Reset the API failure counter (called on successful API call)."""
         with self._lock:
             self._api_failure_count = 0
+
+    def check_volatility_spike(self, zscore: float) -> None:
+        """Auto-engage when realized volatility z-score exceeds threshold."""
+        thr = self._auto_triggers.get("volatility_spike_zscore")
+        if thr is None:
+            return
+        if abs(zscore) >= float(thr):
+            self.engage(
+                reason=f"Volatility spike z-score {zscore:.2f} exceeded threshold {thr}",
+                triggered_by="auto_volatility_spike",
+            )
+
+    def check_runaway_loss(self, loss_pct: float) -> None:
+        """Auto-engage on abnormal session loss depth."""
+        thr = self._auto_triggers.get("runaway_loss_pct")
+        if thr is None:
+            return
+        if loss_pct >= float(thr):
+            self.engage(
+                reason=f"Runaway loss {loss_pct:.2%} exceeded threshold {float(thr):.2%}",
+                triggered_by="auto_runaway_loss",
+            )
+
+    def check_rl_proposal_out_of_bounds(self, detail: str) -> None:
+        """Kill switch when RL proposes invalid parameters."""
+        self.engage(reason=f"RL proposal out of bounds: {detail}", triggered_by="auto_rl_bounds")

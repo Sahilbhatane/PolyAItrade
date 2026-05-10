@@ -116,7 +116,7 @@ MarketDataAgent → SignalAgent → StrategyAgent → RiskAgent → [Approval] �
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Git
 - (Optional) Angel One trading account for live trading
 
@@ -173,6 +173,12 @@ All config lives in three YAML files at the project root:
 | `config.yaml` | Core app config (trading rules, database, broker, logging) |
 | `strategy_config.yaml` | Strategy parameters (indicator thresholds, weights, risk) |
 | `ml_config.yaml` | ML model architecture + training hyperparameters |
+
+### Environment file (`.env`)
+
+Copy `.env.example` to `.env` for local development. Flat keys (`APP_PORT`, `DATABASE_URL`, `ANGELONE_*`, API keys) are merged into YAML config **before** `AI_TRADER_*` overrides; secrets must never be committed.
+
+Details: see `ai_trader/config/env.py` and `ConfigLoader.load()`.
 
 ### Environment Variable Overrides
 
@@ -840,7 +846,7 @@ pytest tests/test_agents_pipeline.py -v
 pytest tests/test_reflection.py -v
 ```
 
-### Current Test Count: 190 tests, all passing
+### Current Test Count: 207 tests, all passing
 
 ---
 

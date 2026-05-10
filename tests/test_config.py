@@ -60,3 +60,23 @@ def test_config_validation():
 def test_config_validation_rejects_invalid():
     with pytest.raises(Exception):
         AppConfig(trading={"max_risk_per_trade": 5.0})
+
+
+def test_clear_config_cache_runs():
+    from ai_trader.config.loader import clear_config_cache
+
+    clear_config_cache()
+
+
+def test_production_angelone_requires_secrets(monkeypatch, temp_config_file):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("AI_TRADER_BROKER__NAME", "angelone")
+    monkeypatch.setenv("AI_TRADER_BROKER__API_KEY", "")
+    monkeypatch.setenv("AI_TRADER_BROKER__CLIENT_ID", "")
+    monkeypatch.setenv("AI_TRADER_BROKER__TOTP_SECRET", "")
+    from ai_trader.config.loader import clear_config_cache
+
+    clear_config_cache()
+    loader = ConfigLoader(temp_config_file)
+    with pytest.raises(ValueError, match="Production Angel"):
+        loader.load()

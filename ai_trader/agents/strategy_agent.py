@@ -13,12 +13,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-import pandas as pd
-
 from ai_trader.agents.base import BaseAgent
 from ai_trader.agents.event_bus import Event, EventBus, EventType
 from ai_trader.agents.state import StateKeys, StateManager
+from ai_trader.strategies.composite_signal import weighted_signal_decision
 
 
 class StrategyAgent(BaseAgent):
@@ -69,7 +67,7 @@ class StrategyAgent(BaseAgent):
         if bar_index is None:
             bar_index = len(signals["rsi"]) - 1
 
-        decision = self._make_decision(signals, bar_index)
+        decision = weighted_signal_decision(signals, bar_index, self._weights, self._confidence_threshold)
 
         await self._state.write(StateKeys.TRADE_DECISION, decision, writer=self.agent_id)
 
@@ -86,55 +84,3 @@ class StrategyAgent(BaseAgent):
             confidence=f"{decision['confidence']:.3f}",
         )
         return decision
-
-    def _make_decision(self, signals: dict[str, Any], bar_index: int) -> dict[str, Any]:
-        """Weighted composite of indicator signals → action + confidence."""
-        component_values = {}
-        for indicator, weight in self._weights.items():
-            series = signals.get(indicator)
-            if series is None or bar_index >= len(series):
-                component_values[indicator] = 0.0
-                continue
-            val = series.iloc[bar_index]
-            component_values[indicator] = float(val) if not pd.isna(val) else 0.0
-
-        # Weighted sum
-        total_weight = sum(self._weights.values())
-        if total_weight == 0:
-            composite = 0.0
-        else:
-            composite = sum(
-                component_values[k] * self._weights[k] for k in self._weights
-            ) / total_weight
-
-        confidence = abs(composite)
-
-        # Determine action
-        if confidence < self._confidence_threshold:
-            action = "HOLD"
-            reasoning = f"Low confidence ({confidence:.3f} < {self._confidence_threshold})"
-        elif composite > 0:
-            action = "BUY"
-            reasoning = f"Bullish composite={composite:.3f}"
-        else:
-            action = "SELL"
-            reasoning = f"Bearish composite={composite:.3f}"
-
-        # Get price context
-        close_series = signals.get("close")
-        current_price = float(close_series.iloc[bar_index]) if close_series is not None else 0.0
-
-        # Get ATR for stop-loss suggestion
-        atr_series = signals.get("atr")
-        atr_val = float(atr_series.iloc[bar_index]) if (atr_series is not None and not pd.isna(atr_series.iloc[bar_index])) else None
-
-        return {
-            "action": action,
-            "confidence": confidence,
-            "composite_score": composite,
-            "reasoning": reasoning,
-            "bar_index": bar_index,
-            "current_price": current_price,
-            "atr": atr_val,
-            "signals": component_values,
-        }

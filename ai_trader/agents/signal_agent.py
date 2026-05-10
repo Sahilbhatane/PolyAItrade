@@ -78,7 +78,7 @@ class SignalAgent(BaseAgent):
         """Compute all indicator signals and return as a dict of Series/values."""
         close = df["close"]
 
-        rsi = Indicators.rsi(close, self._rsi_period)
+        rsi_raw = Indicators.rsi(close, self._rsi_period)
         macd_line, macd_signal, macd_hist = Indicators.macd(
             close, self._macd_fast, self._macd_slow, self._macd_signal
         )
@@ -88,8 +88,13 @@ class SignalAgent(BaseAgent):
 
         vwap = Indicators.vwap(df) if self._vwap_enabled else pd.Series(dtype=float)
 
+        vol = df["volume"].astype(float)
+        vol_ma = vol.rolling(20, min_periods=5).mean()
+        vol_std = vol.rolling(20, min_periods=5).std().replace(0, np.nan)
+        volume_z = ((vol - vol_ma) / vol_std).fillna(0.0)
+
         # Normalize signals to [-1, 1] range (probabilities of direction)
-        rsi_signal = self._rsi_to_signal(rsi)
+        rsi_signal = self._rsi_to_signal(rsi_raw)
         macd_signal_norm = self._macd_to_signal(macd_line, macd_signal, macd_hist)
         ma_signal = self._ma_crossover_signal(sma_fast, sma_slow)
         vwap_signal = self._vwap_to_signal(close, vwap)
@@ -100,9 +105,11 @@ class SignalAgent(BaseAgent):
             "ma_crossover": ma_signal,
             "vwap": vwap_signal,
             "atr": atr,
-            "raw_rsi": rsi,
+            "raw_rsi": rsi_raw,
+            "volume_z": volume_z,
             "raw_macd_hist": macd_hist,
             "close": close,
+            "volume": vol,
         }
 
     @staticmethod

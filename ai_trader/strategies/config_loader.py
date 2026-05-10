@@ -42,6 +42,7 @@ class RiskParams(BaseModel):
     trailing_stop_pct: float = Field(default=0.02, ge=0.005, le=0.15)
     daily_loss_limit: float = Field(default=0.05, ge=0.01, le=0.2)
     max_consecutive_losses: int = Field(default=3, ge=1)
+    atr_stop_multiplier: float = Field(default=2.0, ge=0.5, le=10.0)
 
 
 class OvertradingControls(BaseModel):
@@ -81,8 +82,70 @@ class StrategyConfig(BaseModel):
     overtrading: OvertradingControls = Field(default_factory=OvertradingControls)
     weights: SignalWeights = Field(default_factory=SignalWeights)
     ml: MLConfig = Field(default_factory=MLConfig)
+    strategies: dict[str, Any] = Field(default_factory=dict)
+    regime_weights: dict[str, dict[str, float]] = Field(default_factory=dict)
+    consensus_min_weighted_confidence: float = Field(default=0.35, ge=0.0, le=1.0)
 
 
+def default_strategy_specs() -> dict[str, Any]:
+    """Default multi-strategy registry when YAML omits `strategies:` — backward compatible."""
+    return {
+        "rule_based_v1": {"enabled": True, "weight": 1.0, "params": {}},
+        "momentum_breakout": {"enabled": True, "weight": 0.8, "params": {"lookback": 20, "breakout_pct": 0.005}},
+        "mean_reversion": {"enabled": True, "weight": 0.8, "params": {"rsi_low": 35.0, "rsi_high": 65.0}},
+        "vwap_reversion": {"enabled": True, "weight": 0.8, "params": {"deviation_pct": 0.008}},
+        "ma_crossover": {"enabled": True, "weight": 0.7, "params": {}},
+        "fibonacci_confluence": {
+            "enabled": True,
+            "weight": 0.6,
+            "params": {"swing_window": 20, "tolerance_pct": 0.004, "min_confirmations": 2},
+        },
+    }
+
+
+def default_regime_weights() -> dict[str, dict[str, float]]:
+    return {
+        "bullish_trend": {
+            "rule_based_v1": 1.0,
+            "momentum_breakout": 1.2,
+            "mean_reversion": 0.6,
+            "vwap_reversion": 0.8,
+            "ma_crossover": 1.1,
+            "fibonacci_confluence": 0.9,
+        },
+        "bearish_trend": {
+            "rule_based_v1": 1.0,
+            "momentum_breakout": 1.1,
+            "mean_reversion": 0.7,
+            "vwap_reversion": 0.9,
+            "ma_crossover": 1.1,
+            "fibonacci_confluence": 0.9,
+        },
+        "sideways": {
+            "rule_based_v1": 1.0,
+            "momentum_breakout": 0.5,
+            "mean_reversion": 1.2,
+            "vwap_reversion": 1.2,
+            "ma_crossover": 0.6,
+            "fibonacci_confluence": 1.0,
+        },
+        "volatile": {
+            "rule_based_v1": 0.9,
+            "momentum_breakout": 0.8,
+            "mean_reversion": 0.4,
+            "vwap_reversion": 0.7,
+            "ma_crossover": 0.8,
+            "fibonacci_confluence": 0.7,
+        },
+        "low_liquidity": {
+            "rule_based_v1": 0.8,
+            "momentum_breakout": 0.5,
+            "mean_reversion": 0.8,
+            "vwap_reversion": 0.9,
+            "ma_crossover": 0.7,
+            "fibonacci_confluence": 0.8,
+        },
+    }
 def load_strategy_config(path: str | Path | None = None) -> StrategyConfig:
     """Load strategy config from YAML file. Falls back to defaults if missing."""
     if path is None:
@@ -91,7 +154,10 @@ def load_strategy_config(path: str | Path | None = None) -> StrategyConfig:
         path = Path(path)
 
     if not path.exists():
-        return StrategyConfig()
+        cfg = StrategyConfig()
+        cfg.strategies = default_strategy_specs()
+        cfg.regime_weights = default_regime_weights()
+        return cfg
 
     with open(path, "r") as f:
         data = yaml.safe_load(f)
@@ -99,4 +165,9 @@ def load_strategy_config(path: str | Path | None = None) -> StrategyConfig:
     if not isinstance(data, dict):
         return StrategyConfig()
 
-    return StrategyConfig(**data)
+    cfg = StrategyConfig(**data)
+    if not cfg.strategies:
+        cfg.strategies = default_strategy_specs()
+    if not cfg.regime_weights:
+        cfg.regime_weights = default_regime_weights()
+    return cfg

@@ -77,14 +77,21 @@ class RiskController:
         quantity = int(risk_capital / price)
         return max(quantity, 0)
 
-    def calculate_stop_loss(self, entry_price: float, atr: float | None = None) -> float:
-        """Calculate stop loss price.
+    def calculate_stop_loss(
+        self,
+        entry_price: float,
+        atr: float | None = None,
+        regime_label: str | None = None,
+    ) -> float:
+        """Calculate stop loss price using ATR (regime-scaled) or fixed percentage."""
+        mult = self.risk.atr_stop_multiplier
+        if regime_label == "volatile":
+            mult *= 0.88
+        elif regime_label in ("bullish_trend", "bearish_trend"):
+            mult *= 1.06
 
-        Uses ATR-based stop if available, otherwise fixed percentage.
-        """
         if atr is not None and atr > 0:
-            from ai_trader.strategies.config_loader import IndicatorThresholds
-            return entry_price - (atr * 2.0)
+            return entry_price - (atr * mult)
         return entry_price * (1.0 - self.risk.stop_loss_pct)
 
     def on_trade_completed(self, pnl: float) -> None:

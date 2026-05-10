@@ -46,10 +46,13 @@ class RiskAgent(BaseAgent):
         # Risk parameters (all configurable)
         self._max_capital_pct = self._config.get("max_capital_per_trade", 0.02)
         self._stop_loss_pct = self._config.get("stop_loss_pct", 0.03)
+        self._trailing_stop_pct = self._config.get("trailing_stop_pct", 0.02)
         self._daily_loss_limit = self._config.get("daily_loss_limit", 0.05)
         self._max_consecutive_losses = self._config.get("max_consecutive_losses", 3)
         self._max_trades_per_day = self._config.get("max_trades_per_day", 5)
         self._atr_stop_multiplier = self._config.get("atr_stop_multiplier", 2.0)
+        self._volatile_regime_mult = float(self._config.get("volatile_regime_multiplier", 0.5))
+        self._low_liquidity_mult = float(self._config.get("low_liquidity_regime_multiplier", 0.55))
 
         # Internal risk state
         self._consecutive_losses = 0
@@ -135,12 +138,14 @@ class RiskAgent(BaseAgent):
 
             # Calculate stop loss (mandatory)
             stop_loss = self._calculate_stop_loss(price, atr)
+            trailing_stop = price * (1.0 - self._trailing_stop_pct)
 
             return self._build_verdict(
                 decision, approved=True,
                 reason="All risk checks passed",
                 position_size=position_size,
                 stop_loss=stop_loss,
+                trailing_stop=trailing_stop,
                 risk_reward_ratio=self._estimate_risk_reward(price, stop_loss),
             )
 
@@ -150,9 +155,16 @@ class RiskAgent(BaseAgent):
         return self._build_verdict(decision, approved=False, reason="Unknown action")
 
     def _calculate_position_size(self, price: float) -> int:
-        """Size position to risk at most max_capital_pct of total capital."""
-        risk_capital = self._capital * self._max_capital_pct
-        return int(risk_capital / price)
+        """Size position to risk at most max_capital_pct of total capital (regime-adjusted)."""
+        base = self._capital * self._max_capital_pct / price
+        regime = self._state.read(StateKeys.REGIME) or {}
+        label = str(regime.get("label", ""))
+        mult = 1.0
+        if label == "volatile":
+            mult = self._volatile_regime_mult
+        elif label == "low_liquidity":
+            mult = self._low_liquidity_mult
+        return max(int(base * mult), 0)
 
     def _calculate_stop_loss(self, entry_price: float, atr: float | None) -> float:
         """ATR-based stop loss if available, otherwise fixed percentage."""
