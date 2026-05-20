@@ -160,7 +160,10 @@ pytest --tb=short -q
 uvicorn ai_trader.app:create_app --factory --reload --host 0.0.0.0 --port 8000
 ```
 
-Server will be available at `http://localhost:8000`. Health check: `GET /health`.
+Server will be available at `http://localhost:8000`.
+
+- Browser: open `http://localhost:8000/` (API info), `http://localhost:8000/docs` (Swagger UI), or `http://localhost:8000/health`
+- CLI health check: `curl http://localhost:8000/health`
 
 ---
 
