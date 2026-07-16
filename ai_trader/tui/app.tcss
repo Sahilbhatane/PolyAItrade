@@ -1,0 +1,18 @@
+/* PolyVITrade operator interface — layout shell.
+   Widget-specific styling lives in each widget's DEFAULT_CSS so panes stay
+   self-contained; this file only arranges the persistent frame. */
+
+Screen {
+    layout: vertical;
+}
+
+#body {
+    height: 1fr;
+    width: 100%;
+}
+
+#workspace {
+    width: 1fr;
+    height: 100%;
+    padding: 0;
+}

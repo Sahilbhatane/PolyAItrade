@@ -93,8 +93,11 @@ class LiveExecutionAgent(BaseAgent):
         position_size = verdict.get("position_size", 1)
         stop_loss = verdict.get("stop_loss")
 
-        # Gate 2: Human approval
-        request_id = str(uuid.uuid4())
+        # Gate 2: Human approval.
+        # Callers (e.g. the TradingService) may supply the request_id so the
+        # same id is surfaced to the operator UI and correlated with the
+        # ApprovalGate; otherwise we generate one.
+        request_id = (context or {}).get("request_id") or str(uuid.uuid4())
         trade_details = {
             "symbol": symbol,
             "side": action,

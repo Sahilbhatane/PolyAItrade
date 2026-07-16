@@ -205,6 +205,28 @@ class RiskAgent(BaseAgent):
         self._current_date = None
         self._capital = self._config.get("initial_capital", 100_000.0)
 
+    def state_snapshot(self) -> dict[str, Any]:
+        """Read-only view of internal risk counters for monitoring/UI.
+
+        Purely informational — exposing this does not change any risk logic.
+        """
+        remaining_trades = max(self._max_trades_per_day - self._trades_today, 0)
+        daily_loss_pct = (
+            abs(self._daily_pnl) / self._capital if self._capital > 0 and self._daily_pnl < 0 else 0.0
+        )
+        return {
+            "capital": self._capital,
+            "daily_pnl": self._daily_pnl,
+            "daily_loss_pct": daily_loss_pct,
+            "consecutive_losses": self._consecutive_losses,
+            "max_consecutive_losses": self._max_consecutive_losses,
+            "trades_today": self._trades_today,
+            "max_trades_per_day": self._max_trades_per_day,
+            "remaining_trades_today": remaining_trades,
+            "daily_loss_limit": self._daily_loss_limit,
+            "max_capital_per_trade": self._max_capital_pct,
+        }
+
     @staticmethod
     def _build_verdict(
         decision: dict[str, Any],

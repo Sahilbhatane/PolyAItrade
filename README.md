@@ -1,6 +1,6 @@
 # PolyVITrade - Agentic AI Trading System
 
-Production-grade, multi-agent AI trading system for Indian stock markets (NSE/BSE). Built with Python, FastAPI, PyTorch, and a modular agent architecture.
+Production-grade, multi-agent AI trading system for Indian stock markets (NSE/BSE). Built with Python, FastAPI, PyTorch, and a modular agent architecture. Comes with a keyboard-driven [operator terminal interface](#operator-tui-terminal-interface) (Textual) for monitoring, approvals, and trading.
 
 ---
 
@@ -18,11 +18,12 @@ Production-grade, multi-agent AI trading system for Indian stock markets (NSE/BS
 10. [How To: Go Live (Angel One)](#how-to-go-live-angel-one)
 11. [How To: Approve/Reject Trades](#how-to-approvereject-trades)
 12. [How To: Use the Kill Switch](#how-to-use-the-kill-switch)
-13. [API Reference](#api-reference)
-14. [Trading Rules (Enforced)](#trading-rules-enforced)
-15. [Development Workflow](#development-workflow)
-16. [Testing](#testing)
-17. [What To Add Next](#what-to-add-next)
+13. [Operator TUI (Terminal Interface)](#operator-tui-terminal-interface)
+14. [API Reference](#api-reference)
+15. [Trading Rules (Enforced)](#trading-rules-enforced)
+16. [Development Workflow](#development-workflow)
+17. [Testing](#testing)
+18. [What To Add Next](#what-to-add-next)
 
 ---
 
@@ -93,7 +94,21 @@ ai_trader/
 │   ├── data.py              # Data fetch endpoint
 │   ├── backtest.py          # Backtest execution endpoint
 │   ├── ml.py                # ML train/predict endpoints
-│   └── trading.py           # Approvals, kill switch, positions, balance
+│   ├── rl.py                # RL train/status/rollback endpoints
+│   ├── trading.py           # Approvals, kill switch, positions, balance
+│   └── tui.py               # Read-model + SSE event stream + trade intent (for the TUI)
+├── service/          # Long-running server-side services (owns live pipeline)
+│   ├── event_hub.py         # Fan-out of EventBus events to SSE clients (backpressure)
+│   ├── trading_service.py   # Routes TUI intents: Risk → Approval → Execution
+│   └── log_reader.py        # Lazy, seekable, memory-bounded log pager
+├── tui/              # Operator terminal interface (Textual) — pure consumer
+│   ├── app.py               # PolyVITradeApp shell, workers, keymap, intents
+│   ├── transport.py         # HTTP + SSE client to the backend
+│   ├── store.py             # Client-side UI state mirror (no business logic)
+│   ├── commands.py          # Command palette (Ctrl+P) provider
+│   ├── modals.py            # Confirm + contextual-help overlays
+│   ├── widgets/             # Header, NavRail, StatusBar, MetricCard, StatusPill
+│   └── screens/             # Dashboard, Trade, Positions, Approvals, Logs, ...
 ├── logs/             # Structured JSON logging
 │   └── logger.py
 └── utils/            # Shared utilities
@@ -116,7 +131,7 @@ MarketDataAgent → SignalAgent → StrategyAgent → RiskAgent → [Approval] �
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12 (3.13+ is **not** supported — see `pyproject.toml`: `requires-python = ">=3.12,<3.13"`)
 - Git
 - (Optional) Angel One trading account for live trading
 
@@ -164,6 +179,17 @@ Server will be available at `http://localhost:8000`.
 
 - Browser: open `http://localhost:8000/` (API info), `http://localhost:8000/docs` (Swagger UI), or `http://localhost:8000/health`
 - CLI health check: `curl http://localhost:8000/health`
+
+### Step 5: Launch the Operator TUI (optional)
+
+With the server running, start the keyboard-driven terminal interface:
+
+```bash
+python -m ai_trader.tui            # connects to http://localhost:8000
+# or: python -m ai_trader.tui --url http://your-host:8000
+```
+
+See [Operator TUI](#operator-tui-terminal-interface) for the full keyboard map and screens.
 
 ---
 
@@ -739,6 +765,148 @@ curl http://localhost:8000/trading/kill-switch/history
 
 ---
 
+## Operator TUI (Terminal Interface)
+
+PolyVITrade ships a keyboard-driven **terminal user interface** (built with
+[Textual](https://textual.textualize.io/)) that is the primary way to operate
+the system: monitor status, submit trades, approve/reject orders, watch logs,
+and hit the kill switch — all without a mouse and fully usable over SSH.
+
+### Design principles
+
+- **The TUI is a pure consumer.** It holds *no* business logic and never talks
+  to a broker directly. It reads a read-model + a live event stream over HTTP
+  and submits *intents*. **If the TUI crashes, the execution engine keeps
+  running untouched.**
+- **Event-driven.** A Server-Sent Events (SSE) stream bridged from the internal
+  `EventBus` pushes changes; only changed widgets repaint (no full-screen
+  redraws, no busy polling loops).
+- **Safety is always the backend's job.** Every trade submitted from the TUI is
+  routed through `RiskAgent → ApprovalGate → LiveExecutionAgent (KillSwitch)` on
+  the server. No widget can bypass those gates.
+
+### Prerequisites
+
+1. The FastAPI server must be running (it hosts the event stream + read-model):
+
+```bash
+uvicorn ai_trader.app:create_app --factory --host 0.0.0.0 --port 8000
+```
+
+2. Install dependencies (Textual is included in `requirements.txt`):
+
+```bash
+pip install -r requirements.txt
+```
+
+### Launch
+
+```bash
+# Connect to a locally running server (default)
+python -m ai_trader.tui
+
+# Or point at a remote server (e.g. over an SSH tunnel)
+python -m ai_trader.tui --url http://your-host:8000
+```
+
+### Layout
+
+```
+┌─ Header ────────────────────────────────────────────────────────────────┐
+│ PolyVITrade  MKT OPEN  TIME 14:32:05  BRK 12ms  WRK connected  WS live    │
+│              API ok    RISK ok        APPR 0    NOTIF 41                   │
+├────────────┬──────────────────────────────────────────────────────────── ┤
+│ 1 Dashboard│                                                              │
+│ 2 Trade    │                 MAIN WORKSPACE                               │
+│ 3 Positions│              (context-dependent screen)                      │
+│ 4 Approvals│                                                              │
+│ 5 Logs     │                                                              │
+│ ...        │                                                              │
+├────────────┴──────────────────────────────────────────────────────────── ┤
+│ ^P palette  ^K kill  F12 help  q quit │ mode PAPER │ ● connected │ mem 90MB │
+└───────────────────────────────────────────────────────────────────────── ┘
+```
+
+- **Header** — market status, time, broker latency, worker/websocket/API health,
+  risk state, pending-approval count, event count.
+- **Left nav** — 12 screens, selectable by number, arrow keys, or command palette.
+- **Workspace** — the active screen (mounted once, shown/hidden — never rebuilt).
+- **Status bar** — shortcuts, mode, connection, memory, queue depth, task count.
+
+### Keyboard map
+
+**Global**
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+P` | Command palette — fuzzy-search every action |
+| `1`–`9`, `0` | Jump to nav item by number (when not typing in a field) |
+| `Tab` / `Shift+Tab` | Move focus forward / back |
+| `Ctrl+K` | Kill switch engage/disengage (asks for confirmation) |
+| `F12` / `?` | Contextual, plain-English help for the focused item |
+| `q` / `Ctrl+Q` | Quit (asks for confirmation) |
+
+**Trade screen**
+
+| Key | Action |
+|-----|--------|
+| `F1` / `F2` | Set side Buy / Sell |
+| `F3` / `F4` | Set mode Paper / Live (Live asks for confirmation) |
+| `Ctrl+S` | Submit the ticket |
+| `Esc` | Clear the ticket |
+
+**Approvals screen**: `a` approve · `r` reject · `j`/`k` move selection.
+
+**Logs screen**: `/` search · `f` filter level · `c` clear filters · `g` reload · `PgUp` load older.
+
+### Screens
+
+| # | Screen | Shows |
+|---|--------|-------|
+| 1 | **Dashboard** | Cards only (no charts): P&L, open positions, pending approvals, regime, risk state, daily loss, capital, remaining risk budget, trades today, consecutive losses, market, broker latency, exposure, last trade, queue health |
+| 2 | **Trade** | Keyboard order ticket. You propose symbol/side/qty/price/stops; **RiskAgent sizes the position and sets the mandatory stop loss**, and the ApprovalGate must clear it. The result panel shows the server verdict |
+| 3 | **Positions** | Table only — symbol, qty, entry, current, P&L, exposure, stop, target, confidence, risk, age |
+| 4 | **Approvals** | Pending trades with reasoning/risk/confidence; one key to approve or reject |
+| 5 | **Logs** | Live, filterable, seekable logs — lazily paged from the backend with UI virtualization (max 500 visible rows), never loads the whole file |
+| 6 | **Strategies** | Active strategies, weights, regime, ML status, consensus threshold |
+| 7 | **Agents** | Live agent status (Risk, Execution) + pipeline agents + recent event-bus activity |
+| 8 | **RL** | Policy version, checkpoint status, deployment mode (shadow/paper/live), seed, config |
+| 9 | **Diagnostics** | Broker latency, event-hub stats, dropped events, async tasks, threads, memory |
+| 0 | **Settings** | Local TUI preferences (refresh interval, notifications, logging level, timezone) — saved to `~/.polyvitrade/tui_settings.json` |
+| — | **API Config** | Integration status only (configured/missing) — **never exposes secrets** |
+| — | **Help** | Full keyboard map + plain-English glossary |
+
+### How the Trade flow enforces safety
+
+```
+TUI ticket ──POST /tui/trade/submit──▶ TradingService
+                                          │
+                                          ├─▶ RiskAgent      (sizes position, sets stop, may VETO)
+                                          ├─▶ ApprovalGate   (waits for human approve/reject)
+                                          └─▶ LiveExecutionAgent (kill-switch check → broker → verify)
+                                                    │
+                          events (SSE) ◀────────────┘  → Header/Dashboard/Approvals update live
+```
+
+Only **one** trade may be pending approval at a time (guards duplicate
+approvals/orders). In paper mode with `approval.auto_approve_paper: true`,
+approval is automatic; in live mode a human must approve, and the Live path in
+the Trade screen additionally requires an on-screen confirmation.
+
+### Notes
+
+- The TUI reads `/tui/snapshot`, `/tui/diagnostics`, `/tui/strategies`, `/tui/agents`,
+  `/tui/rl`, `/tui/config/integrations`, `/trading/positions`, and
+  `/trading/approvals/pending` (adaptive polling) and subscribes to
+  `/tui/events` (SSE push). Read-model calls degrade gracefully if the server is
+  briefly unavailable; HTTP requests retry transient failures; the event stream
+  reconnects with exponential backoff.
+- Works on small terminals and over SSH; no mouse required.
+- **Settings screen** saves preferences locally only (not on the server).
+- **API Config screen** shows boolean configured/missing status — never raw API keys.
+
+---
+
 ## API Reference
 
 | Method | Endpoint | Description |
@@ -758,6 +926,18 @@ curl http://localhost:8000/trading/kill-switch/history
 | GET | `/trading/positions` | Open positions from broker |
 | GET | `/trading/balance` | Account balance |
 | GET | `/trading/health` | Broker connectivity check |
+| GET | `/rl/status` | RL checkpoint status |
+| POST | `/rl/train` | Trigger an offline PPO training run |
+| POST | `/rl/rollback` | Remove the latest RL checkpoint |
+| GET | `/tui/events` | **SSE** stream of live pipeline events (for the TUI) |
+| GET | `/tui/snapshot` | Aggregated dashboard read-model |
+| POST | `/tui/trade/submit` | Submit a trade intent (routed through Risk → Approval → Execution) |
+| GET | `/tui/logs` | Paged, seekable, filterable structured logs |
+| GET | `/tui/diagnostics` | Runtime diagnostics (latency, queues, tasks, memory) |
+| GET | `/tui/strategies` | Strategy registry, weights, regime, ML status |
+| GET | `/tui/agents` | Live agent status + recent event-bus activity |
+| GET | `/tui/rl` | RL checkpoint and deployment read-model |
+| GET | `/tui/config/integrations` | Integration configured/missing status (no secrets) |
 
 ---
 
@@ -847,21 +1027,48 @@ pytest tests/test_agents_pipeline.py -v
 
 # Reflection agent tests
 pytest tests/test_reflection.py -v
+
+# Backend event bridge / read-model / trade-intent routing (TUI backend)
+pytest tests/tui_backend/ -v
+
+# Operator TUI (headless, via Textual's Pilot harness)
+pytest tests/tui/ -v
 ```
 
-### Current Test Count: 207 tests, all passing
+### Current Test Count: 265 tests, all passing
+
+> Use the project virtual environment (Python 3.12). On Windows PowerShell:
+> `\.venv\Scripts\python.exe -m pytest -q`. Python 3.13+ is not supported
+> (see `pyproject.toml`: `requires-python = ">=3.12,<3.13"`).
+
+### TUI test coverage includes
+
+- Keyboard navigation and screen switching
+- Trade intent submission (paper + live confirm)
+- Approval approve/reject flows
+- Log UI virtualization (bounded row window)
+- Transport retry on transient failures
+- Memory stability across pane switching
+- Accessibility (status conveyed by glyph + text)
+- Backend read-model endpoints (strategies, agents, RL, integrations)
 
 ---
 
 ## What To Add Next
 
+### Recently Delivered
+
+- ✅ **Live event stream** — SSE bridge over the internal `EventBus` (`GET /tui/events`).
+- ✅ **Operator interface** — full keyboard-driven Textual TUI with all 12 screens (Dashboard, Trade, Positions, Approvals, Logs, Strategies, Agents, RL, Diagnostics, Settings, API Config, Help).
+- ✅ **Backend read-model** — `/tui/strategies`, `/tui/agents`, `/tui/rl`, `/tui/config/integrations` (secrets never exposed).
+- ✅ **Hardening** — log UI virtualization, HTTP retry on transient failures, SSE reconnect backoff, memory-leak guards, accessibility tests.
+
 ### High Priority (Recommended Order)
 
-1. **WebSocket notifications** — Push trade proposals to a frontend instead of polling
-2. **Dashboard UI** — React/Next.js frontend for approvals, monitoring, P&L tracking
-3. **Telegram/Discord bot** — Approve trades from your phone
-4. **Multiple symbol support** — Run pipeline on a watchlist simultaneously
-5. **Scheduled pipeline runner** — Cron/APScheduler to run pipeline every N minutes during market hours
+1. **Telegram/Discord bot** — Approve trades from your phone
+2. **Multiple symbol support** — Run pipeline on a watchlist simultaneously
+3. **Scheduled pipeline runner** — Cron/APScheduler to run pipeline every N minutes during market hours
+4. **API Config connectivity tests** — Validate/test each integration key from the TUI (without exposing secrets)
 
 ### Medium Priority
 

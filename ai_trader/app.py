@@ -38,11 +38,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     broker = _create_broker(config)
     trading.set_dependencies(approval_gate, kill_switch, broker)
 
+    # Long-running service that owns the shared EventBus and bridges events to
+    # the TUI. Constructed with the SAME approval gate / kill switch / broker so
+    # intents submitted from the TUI pass through the identical safety gates.
+    from ai_trader.routes import tui
+    from ai_trader.service import TradingService
+
+    trading_service = TradingService(
+        broker=broker,
+        approval_gate=approval_gate,
+        kill_switch=kill_switch,
+        config={
+            "risk": {
+                "max_capital_per_trade": config.trading.max_risk_per_trade,
+                "daily_loss_limit": config.trading.max_daily_loss,
+                "max_consecutive_losses": config.trading.max_consecutive_losses,
+            },
+        },
+    )
+    tui.set_dependencies(trading_service)
+
     app.state.approval_gate = approval_gate
     app.state.kill_switch = kill_switch
     app.state.broker = broker
+    app.state.trading_service = trading_service
 
-    yield
+    try:
+        yield
+    finally:
+        await trading_service.shutdown()
 
 
 def _create_broker(config):
@@ -74,7 +98,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    from ai_trader.routes import backtest, data, health, ml, rl, trading
+    from ai_trader.routes import backtest, data, health, ml, rl, trading, tui
 
     app.include_router(health.router)
     app.include_router(data.router)
@@ -82,5 +106,6 @@ def create_app() -> FastAPI:
     app.include_router(ml.router)
     app.include_router(rl.router)
     app.include_router(trading.router)
+    app.include_router(tui.router)
 
     return app
