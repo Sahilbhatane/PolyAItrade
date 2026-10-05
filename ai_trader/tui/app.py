@@ -18,7 +18,10 @@ from ai_trader.tui.commands import PolyVICommands
 from ai_trader.tui.messages import (
     ApprovalDecision,
     KillSwitchIntent,
+    LoadConfigIntent,
     LoadLogsIntent,
+    ResetConfigIntent,
+    SaveConfigIntent,
     SubmitTradeIntent,
 )
 from ai_trader.tui.modals import ConfirmModal, HelpModal
@@ -289,6 +292,66 @@ class PolyVITradeApp(App):
             self._broadcast()
             return
         pane.apply_logs(payload, reset=message.reset)
+
+    async def on_load_config_intent(self, message: LoadConfigIntent) -> None:
+        pane = self.query_one(SettingsPane)
+        if not hasattr(self._transport, "config_file"):
+            return
+        try:
+            if hasattr(self._transport, "config_files"):
+                files = await self._transport.config_files()
+                pane.set_config_files(files.get("files", []))
+            name = message.name or pane._selected_file()
+            payload = await self._transport.config_file(name)
+            pane.set_config_content(payload.get("content", ""))
+            pane.show_config_status(f"Loaded {name}.")
+        except (TransportError, ValueError) as e:
+            pane.show_config_status(f"Configuration load failed: {e}", error=True)
+
+    async def on_save_config_intent(self, message: SaveConfigIntent) -> None:
+        def _save(confirmed: bool | None) -> None:
+            if confirmed:
+                self.run_worker(self._do_save_config(message), exclusive=False)
+
+        if message.sensitive:
+            self.push_screen(
+                ConfirmModal(
+                    f"Apply sensitive changes to {message.name}? "
+                    "This may change mode, credentials, or strategy behavior."
+                ),
+                _save,
+            )
+        else:
+            self.run_worker(self._do_save_config(message), exclusive=False)
+
+    async def _do_save_config(self, message: SaveConfigIntent) -> None:
+        pane = self.query_one(SettingsPane)
+        try:
+            await self._transport.update_config_file(message.name, message.content)
+            pane.show_config_status(f"Saved {message.name}. Restart the service to apply it.")
+        except TransportError as e:
+            pane.show_config_status(f"Configuration save failed: {e}", error=True)
+
+    async def on_reset_config_intent(self, message: ResetConfigIntent) -> None:
+        def _reset(confirmed: bool | None) -> None:
+            if confirmed:
+                self.run_worker(self._do_reset_config(message), exclusive=False)
+
+        self.push_screen(
+            ConfirmModal(
+                f"Reset {message.name} to safe defaults? Personal keys and tokens will be removed."
+            ),
+            _reset,
+        )
+
+    async def _do_reset_config(self, message: ResetConfigIntent) -> None:
+        pane = self.query_one(SettingsPane)
+        try:
+            result = await self._transport.reset_config_file(message.name)
+            pane.set_config_content(result.get("content", ""))
+            pane.show_config_status(f"Reset {message.name}; no personal keys were retained.")
+        except TransportError as e:
+            pane.show_config_status(f"Configuration reset failed: {e}", error=True)
 
     # --- Global actions ------------------------------------------------
 

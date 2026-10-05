@@ -209,6 +209,25 @@ Copy `.env.example` to `.env` for local development. Flat keys (`APP_PORT`, `DAT
 
 Details: see `ai_trader/config/env.py` and `ConfigLoader.load()`.
 
+### Configure from the TUI
+
+The **Settings** tab is the single system-settings workspace. It can load and
+save `config.yaml`, `ml_config.yaml`, `strategy_config.yaml`, `.env`, and other
+root-level YAML/environment files discovered by the backend. This editor is
+for system settings only; it never submits, edits, or cancels trades.
+
+Use **Save** to validate and persist YAML or `.env` content. Credentials such
+as broker/trader keys, broker API values, LLM keys, notification tokens, and
+webhooks may be entered there. Values are written only to the selected local
+configuration file, so do not expose the TUI endpoint to an untrusted network.
+Restart the API service after saving because configuration is loaded at startup.
+
+The TUI asks for confirmation before applying sensitive changes, including
+environment/mode changes, broker changes, strategy changes, and credential
+updates. **Reset to safe defaults** asks for confirmation and restores the
+tracked defaults while clearing personal keys and tokens. `.env` resets from
+`.env.example` with all values blank.
+
 ### Environment Variable Overrides
 
 Any config value can be overridden with environment variables using `AI_TRADER_` prefix and `__` separator:
@@ -872,7 +891,7 @@ python -m ai_trader.tui --url http://your-host:8000
 | 7 | **Agents** | Live agent status (Risk, Execution) + pipeline agents + recent event-bus activity |
 | 8 | **RL** | Policy version, checkpoint status, deployment mode (shadow/paper/live), seed, config |
 | 9 | **Diagnostics** | Broker latency, event-hub stats, dropped events, async tasks, threads, memory |
-| 0 | **Settings** | Local TUI preferences (refresh interval, notifications, logging level, timezone) — saved to `~/.polyvitrade/tui_settings.json` |
+| 0 | **Settings** | Local TUI preferences plus one system configuration editor for YAML and `.env` files; sensitive saves and reset require confirmation |
 | — | **API Config** | Integration status only (configured/missing) — **never exposes secrets** |
 | — | **Help** | Full keyboard map + plain-English glossary |
 
@@ -902,8 +921,11 @@ the Trade screen additionally requires an on-screen confirmation.
   briefly unavailable; HTTP requests retry transient failures; the event stream
   reconnects with exponential backoff.
 - Works on small terminals and over SSH; no mouse required.
-- **Settings screen** saves preferences locally only (not on the server).
-- **API Config screen** shows boolean configured/missing status — never raw API keys.
+- **Settings screen** keeps UI preferences local and edits system configuration
+  through the guarded `/tui/config/*` endpoints. It is not a trade screen.
+- **API Config screen** still shows boolean configured/missing status — never
+  raw API keys; use Settings when you intentionally need to enter or update a
+  credential.
 
 ---
 

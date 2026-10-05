@@ -61,6 +61,12 @@ class BackendTransport:
     async def integrations(self) -> dict[str, Any]:
         return await self._get("/tui/config/integrations")
 
+    async def config_files(self) -> dict[str, Any]:
+        return await self._get("/tui/config/files")
+
+    async def config_file(self, name: str) -> dict[str, str]:
+        return await self._get(f"/tui/config/file/{name}")
+
     async def positions(self) -> list[dict[str, Any]]:
         return await self._get("/trading/positions")
 
@@ -109,6 +115,12 @@ class BackendTransport:
     async def set_kill_switch(self, action: str, reason: str = "") -> dict[str, Any]:
         return await self._post("/trading/kill-switch", {"action": action, "reason": reason})
 
+    async def update_config_file(self, name: str, content: str) -> dict[str, str]:
+        return await self._request_with_retry("PUT", "/tui/config/file", json={"name": name, "content": content})
+
+    async def reset_config_file(self, name: str) -> dict[str, str]:
+        return await self._post("/tui/config/reset", {"name": name})
+
     # --- Event stream --------------------------------------------------
 
     async def stream_events(self) -> AsyncIterator[dict[str, Any]]:
@@ -155,8 +167,10 @@ class BackendTransport:
             try:
                 if method == "GET":
                     resp = await self._client.get(path, params=params)
-                else:
+                elif method == "POST":
                     resp = await self._client.post(path, json=json)
+                else:
+                    resp = await self._client.put(path, json=json)
                 return self._handle(resp)
             except TransportError as e:
                 last_err = e

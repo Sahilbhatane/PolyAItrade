@@ -21,6 +21,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ai_trader.config import get_config
+from ai_trader.config.editor import (
+    list_config_files,
+    read_config_file,
+    reset_config_file,
+    write_config_file,
+)
 from ai_trader.logs import get_logger
 from ai_trader.service.log_reader import read_logs
 from ai_trader.service.trading_service import (
@@ -236,6 +242,42 @@ async def config_integrations() -> dict[str, Any]:
             "discord": _configured(integrations.discord_webhook_url),
         },
     }
+
+
+class ConfigFileRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=128)
+    content: str = Field(..., max_length=1_000_000)
+
+
+@router.get("/config/files")
+async def config_files() -> dict[str, Any]:
+    """List editable root-level YAML and environment configuration files."""
+    return {"files": list_config_files()}
+
+
+@router.get("/config/file/{name}")
+async def config_file(name: str) -> dict[str, str]:
+    try:
+        return read_config_file(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/config/file")
+async def update_config_file(request: ConfigFileRequest) -> dict[str, str]:
+    try:
+        return write_config_file(request.name, request.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/config/reset")
+async def reset_config(request: dict[str, str]) -> dict[str, str]:
+    name = request.get("name", "")
+    try:
+        return reset_config_file(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/diagnostics")

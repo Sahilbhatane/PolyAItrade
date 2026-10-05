@@ -46,3 +46,29 @@ class LoadSectionIntent(Message):
     def __init__(self, section: str) -> None:
         self.section = section
         super().__init__()
+
+
+class LoadConfigIntent(Message):
+    """Load system configuration files into the single Settings pane."""
+
+    def __init__(self, name: str | None = None) -> None:
+        self.name = name
+        super().__init__()
+
+
+class SaveConfigIntent(Message):
+    """Request a validated configuration-file write."""
+
+    def __init__(self, name: str, content: str, sensitive: bool) -> None:
+        self.name = name
+        self.content = content
+        self.sensitive = sensitive
+        super().__init__()
+
+
+class ResetConfigIntent(Message):
+    """Request restoring a configuration file without personal credentials."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__()
